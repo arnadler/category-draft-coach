@@ -8,12 +8,13 @@
  * the simulation module for z-score league distributions.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import Fuse from "fuse.js";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Player, LeagueSettings, Recommendation, RosterSlot, DraftState } from "@/lib/types";
 import { DEFAULT_LEAGUE_SETTINGS } from "@/lib/defaults";
 import { computeRosterTotalsFromSlots, RosterTotals } from "@/lib/stats";
 import { getRecommendations } from "@/lib/recommendation";
-import { assignPlayersToSlots, expandRosterSlots, getOpenSlots } from "@/lib/roster";
+import { assignPlayersToSlots, expandRosterSlots } from "@/lib/roster";
 import {
   createEmptyDraftState,
   draftForMe,
@@ -28,6 +29,7 @@ import { getBundledPlayers, getBundledMeta, normalizePlayer, PlayerDatasetMeta }
 import { simulateLeagueDistributions, LeagueCategoryDistributions } from "@/lib/simulation";
 import { useLocalStorageState } from "./useLocalStorageState";
 import { STORAGE_KEYS } from "@/lib/storage";
+import { extractNameFromDraftRoomText, normalizePlayerName } from "@/lib/names";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
@@ -36,6 +38,35 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 function isNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
+
+function isString(v: unknown): v is string {
+  return typeof v === "string";
+}
+
+type ExtensionPickPayload = {
+  eventId?: string;
+  name?: string;
+  normalizedName?: string;
+  detectedAt?: number;
+};
+
+type ExtensionSyncStatus = {
+  extensionDetected: boolean;
+  extensionEnabled: boolean;
+  cbsConnected: boolean;
+  lastCbsHeartbeatAt: number | null;
+  lastPickName: string | null;
+  lastPickAt: number | null;
+  syncedOtherPickCount: number;
+  unmatchedPickCount: number;
+  lastUnmatchedName: string | null;
+};
+
+type SearchPlayerRow = {
+  playerId: string;
+  name: string;
+  _searchName: string;
+};
 
 function clamp01(v: unknown, fallback: number): number {
   const n = isNumber(v) ? v : fallback;
@@ -232,6 +263,168 @@ export function useDraftState() {
     return allPlayers.filter((p) => !drafted.has(p.playerId));
   }, [allPlayers, draftState]);
 
+  const availableSearchRows = useMemo<SearchPlayerRow[]>(
+    () =>
+      availablePlayers.map((p) => ({
+        playerId: p.playerId,
+        name: p.name,
+        _searchName: normalizePlayerName(p.name),
+      })),
+    [availablePlayers]
+  );
+
+  const availableSearchFuse = useMemo(
+    () =>
+      new Fuse(availableSearchRows, {
+        keys: ["_searchName"],
+        threshold: 0.32,
+        ignoreLocation: true,
+        minMatchCharLength: 2,
+      }),
+    [availableSearchRows]
+  );
+
+  const [extensionSync, setExtensionSync] = useState<ExtensionSyncStatus>({
+    extensionDetected: false,
+    extensionEnabled: true,
+    cbsConnected: false,
+    lastCbsHeartbeatAt: null,
+    lastPickName: null,
+    lastPickAt: null,
+    syncedOtherPickCount: 0,
+    unmatchedPickCount: 0,
+    lastUnmatchedName: null,
+  });
+
+  const seenExtensionEventsRef = useRef<Set<string>>(new Set());
+
+  const matchSyncedPickToPlayerId = useCallback(
+    (pickName: string, normalizedFromExtension?: string): string | null => {
+      const extracted = extractNameFromDraftRoomText(pickName);
+      const query = normalizePlayerName(normalizedFromExtension ?? extracted);
+      if (!query) return null;
+
+      const exact = availableSearchRows.find((p) => p._searchName === query);
+      if (exact) return exact.playerId;
+
+      const results = availableSearchFuse.search(query).slice(0, 2);
+      const best = results[0];
+      const second = results[1];
+      if (!best) return null;
+      const bestScore = best.score ?? 1;
+      const secondScore = second?.score ?? 1;
+      if (bestScore < 0.16 || (bestScore < 0.24 && secondScore - bestScore > 0.08)) {
+        return best.item.playerId;
+      }
+      return null;
+    },
+    [availableSearchRows, availableSearchFuse]
+  );
+
+  useEffect(() => {
+    if (!isLoaded || typeof window === "undefined") return;
+
+    const onWindowMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== window || !isRecord(event.data)) return;
+      const payload = event.data;
+      if (payload.source !== "cdc-extension" || !isString(payload.type)) return;
+
+      const now = Date.now();
+
+      if (payload.type === "CBS_SYNC_STATUS") {
+        const heartbeat = isNumber(payload.lastCbsHeartbeatAt) ? payload.lastCbsHeartbeatAt : null;
+        const isConnected = heartbeat != null && now - heartbeat < 30000;
+        setExtensionSync((prev) => ({
+          ...prev,
+          extensionDetected: true,
+          extensionEnabled: typeof payload.enabled === "boolean" ? payload.enabled : prev.extensionEnabled,
+          cbsConnected: isConnected,
+          lastCbsHeartbeatAt: heartbeat ?? prev.lastCbsHeartbeatAt,
+        }));
+        return;
+      }
+
+      if (payload.type !== "CBS_DRAFT_PICKS" || !Array.isArray(payload.picks)) return;
+
+      const matchedIds: string[] = [];
+      let lastMatchedName: string | null = null;
+      let unmatchedInMessage = 0;
+      let lastUnmatchedName: string | null = null;
+      const seen = seenExtensionEventsRef.current;
+
+      for (const rawPick of payload.picks as ExtensionPickPayload[]) {
+        if (!isRecord(rawPick)) continue;
+        const name = isString(rawPick.name) ? rawPick.name.trim() : "";
+        if (!name) continue;
+        const normalized = isString(rawPick.normalizedName)
+          ? normalizePlayerName(rawPick.normalizedName)
+          : normalizePlayerName(extractNameFromDraftRoomText(name));
+        if (!normalized) continue;
+        const detectedAt = isNumber(rawPick.detectedAt) ? rawPick.detectedAt : now;
+        const eventId = isString(rawPick.eventId)
+          ? rawPick.eventId
+          : `${normalized}:${Math.floor(detectedAt / 5000)}`;
+
+        if (seen.has(eventId)) continue;
+        seen.add(eventId);
+        if (seen.size > 1600) {
+          seen.clear();
+          seen.add(eventId);
+        }
+
+        const playerId = matchSyncedPickToPlayerId(name, normalized);
+        if (!playerId) {
+          unmatchedInMessage += 1;
+          lastUnmatchedName = name;
+          continue;
+        }
+        if (!matchedIds.includes(playerId)) {
+          matchedIds.push(playerId);
+          lastMatchedName = name;
+        }
+      }
+
+      if (matchedIds.length > 0) {
+        setDraftState((prev) => {
+          let next = prev;
+          for (const playerId of matchedIds) {
+            next = draftForOther(next, playerId);
+          }
+          return next;
+        });
+      }
+
+      setExtensionSync((prev) => ({
+        ...prev,
+        extensionDetected: true,
+        cbsConnected: true,
+        lastCbsHeartbeatAt: now,
+        lastPickName: lastMatchedName ?? prev.lastPickName,
+        lastPickAt: matchedIds.length > 0 ? now : prev.lastPickAt,
+        syncedOtherPickCount: prev.syncedOtherPickCount + matchedIds.length,
+        unmatchedPickCount: prev.unmatchedPickCount + unmatchedInMessage,
+        lastUnmatchedName: lastUnmatchedName ?? prev.lastUnmatchedName,
+      }));
+    };
+
+    window.addEventListener("message", onWindowMessage);
+    window.postMessage({ source: "cdc-app", type: "CDC_APP_READY" }, window.location.origin);
+
+    return () => window.removeEventListener("message", onWindowMessage);
+  }, [isLoaded, matchSyncedPickToPlayerId, setDraftState]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const timer = window.setInterval(() => {
+      setExtensionSync((prev) => {
+        if (!prev.cbsConnected || prev.lastCbsHeartbeatAt == null) return prev;
+        if (Date.now() - prev.lastCbsHeartbeatAt < 30000) return prev;
+        return { ...prev, cbsConnected: false };
+      });
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   // ── Recommendations ─────────────────────────────────────────────
   const recommendations: Recommendation[] = useMemo(() => {
     if (!isLoaded) return [];
@@ -320,6 +513,7 @@ export function useDraftState() {
     recommendations,
     datasetMeta,
     leagueDists,
+    extensionSync,
 
     // Actions
     handleDraftMe,

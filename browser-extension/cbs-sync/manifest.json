@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Category Draft Coach CBS Sync",
+  "version": "0.1.0",
+  "description": "Auto-sync drafted players from CBS draft room into Category Draft Coach.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://*.cbssports.com/*",
+    "http://localhost:3000/*",
+    "https://*.vercel.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Category Draft Coach CBS Sync",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.cbssports.com/*"],
+      "js": ["content-cbs.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:3000/*", "https://*.vercel.app/*"],
+      "js": ["content-app.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

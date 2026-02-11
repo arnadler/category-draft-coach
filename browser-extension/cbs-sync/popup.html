@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Category Draft Coach Sync</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 14px;
+        width: 320px;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0 0 8px;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid #dbe2ea;
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 10px;
+      }
+      .status {
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .primary {
+        background: #111827;
+        color: #fff;
+      }
+      .muted {
+        background: #e5e7eb;
+        color: #111827;
+      }
+      ul {
+        margin: 8px 0 0;
+        padding-left: 18px;
+      }
+      li {
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      .small {
+        font-size: 12px;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Category Draft Coach CBS Sync</h1>
+
+    <div class="card">
+      <div id="status" class="status">Checking status...</div>
+      <div style="display: flex; gap: 8px;">
+        <button id="toggle" class="primary">Pause Sync</button>
+        <button id="refresh" class="muted">Refresh</button>
+      </div>
+      <div id="counts" class="small" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="small"><strong>How to use</strong></div>
+      <ul>
+        <li>Keep this extension <strong>enabled</strong>.</li>
+        <li>Open your CBS draft room tab.</li>
+        <li>Open Category Draft Coach at <code>http://localhost:3000</code> or your Vercel URL.</li>
+        <li>The app should show "CBS sync live" when picks are detected.</li>
+      </ul>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -14,6 +14,18 @@ Open **http://localhost:3000** in your browser.
 
 All state is saved in your browser's localStorage -- you can close the tab and come back without losing your draft.
 
+## CBS Auto Sync (Browser Extension)
+
+If you draft on CBS and want automatic "off-board" updates, use the bundled extension:
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select `browser-extension/cbs-sync`
+5. Keep your CBS draft tab and Category Draft Coach tab open at the same time
+
+When connected, the app header shows **CBS sync live** and auto-removes detected picks for other teams.
+
 ## How It Works
 
 ### During Your Live Draft (on CBS, ESPN, Yahoo, etc.)
@@ -21,6 +33,8 @@ All state is saved in your browser's localStorage -- you can close the tab and c
 1. **Quick Add** -- Paste a player name from your draft room into the Quick Add bar at the top. It fuzzy-matches names, even with CBS-style formatting like `"Acuna Jr., Ronald"`. If there's one clear match, it auto-adds; otherwise you pick from a short dropdown.
 
 2. **Player Pool** -- Browse or search available players in the left panel. Click a player to draft them as "My Pick" or mark them as "Other Team" (removes from pool without adding to your roster).
+
+   If CBS sync extension is enabled, many other-team picks will be removed automatically.
 
 3. **Category Dashboard** -- The center panel shows your roster slots and a live z-score dashboard for every category. Green bars = you're ahead of the league; red bars = you're behind.
 
@@ -121,6 +135,15 @@ src/
     storage.ts            # localStorage key constants
   data/
     players.sample.json   # Bundled sample dataset (~230 players)
+browser-extension/
+  cbs-sync/
+    manifest.json        # Chrome MV3 extension manifest
+    background.js        # Message relay between CBS tab and app tab
+    content-cbs.js       # CBS draft-room watcher
+    content-app.js       # App-tab bridge (window.postMessage)
+    popup.html           # Extension control panel
+    popup.js             # Enable/pause + status
+    README.md            # Extension setup instructions
 ```
 
 ## Tech Stack

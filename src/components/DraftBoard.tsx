@@ -27,6 +27,7 @@ export function DraftBoard() {
     recommendations,
     datasetMeta,
     leagueDists,
+    extensionSync,
     handleDraftMe,
     handleDraftOther,
     handleUndoLast,
@@ -38,6 +39,22 @@ export function DraftBoard() {
 
   const [showSettings, setShowSettings] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("picks");
+
+  const syncLabel = !extensionSync.extensionDetected
+    ? "Install CBS Sync extension"
+    : !extensionSync.extensionEnabled
+      ? "CBS sync paused"
+      : extensionSync.cbsConnected
+        ? "CBS sync live"
+        : "Waiting for CBS draft room";
+
+  const syncPillClass = !extensionSync.extensionDetected
+    ? "bg-zinc-100 text-zinc-700 border-zinc-200"
+    : !extensionSync.extensionEnabled
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : extensionSync.cbsConnected
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        : "bg-blue-50 text-blue-700 border-blue-200";
 
   if (!isLoaded) {
     return (
@@ -96,6 +113,28 @@ export function DraftBoard() {
           availablePlayers={availablePlayers}
           onDraftMe={handleDraftMe}
         />
+
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs md:text-sm">
+          <div className={`rounded-full border px-3 py-1 font-semibold ${syncPillClass}`}>
+            {syncLabel}
+          </div>
+          {extensionSync.syncedOtherPickCount > 0 ? (
+            <div className="text-zinc-600">
+              Auto-removed <span className="font-semibold text-zinc-800">{extensionSync.syncedOtherPickCount}</span>{" "}
+              off-board picks
+            </div>
+          ) : null}
+          {extensionSync.lastPickName ? (
+            <div className="text-zinc-600">
+              Last sync: <span className="font-semibold text-zinc-800">{extensionSync.lastPickName}</span>
+            </div>
+          ) : null}
+          {extensionSync.lastUnmatchedName ? (
+            <div className="text-amber-700">
+              Needs review: <span className="font-semibold">{extensionSync.lastUnmatchedName}</span>
+            </div>
+          ) : null}
+        </div>
 
         {/* Mobile Tab Bar */}
         <div className="flex md:hidden mt-2 border-t border-zinc-200 pt-2 gap-1">
