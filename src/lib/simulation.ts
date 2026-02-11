@@ -48,6 +48,17 @@ type TeamDraftNeeds = {
   blockPitcher: boolean;
 };
 
+type CategorySignalWeights = {
+  hitterPower: number;
+  hitterSpeed: number;
+  hitterRate: number;
+  hitterPlayingTime: number;
+  pitcherStrikeout: number;
+  pitcherRatio: number;
+  pitcherSaves: number;
+  pitcherVolume: number;
+};
+
 function mulberry32(seed: number) {
   return function () {
     let t = (seed += 0x6d2b79f5);
@@ -87,7 +98,6 @@ function classifyTeamTargets(settings: LeagueSettings) {
   let pitcherStart = 0;
   let bench = 0;
   let spStart = 0;
-  let rpStart = 0;
   let pFlexStart = 0;
 
   for (const s of slots) {
@@ -103,7 +113,6 @@ function classifyTeamTargets(settings: LeagueSettings) {
       pitcherStart += 1;
       if (label === "P" || (elig.includes("SP") && elig.includes("RP"))) pFlexStart += 1;
       else if (elig.includes("SP")) spStart += 1;
-      else if (elig.includes("RP")) rpStart += 1;
     } else {
       hitterStart += 1;
     }
@@ -216,10 +225,69 @@ function buildPlayerFeatures(allPlayers: Player[]): Map<string, PlayerDraftFeatu
   return map;
 }
 
+function buildCategorySignalWeights(
+  activeCategories: Array<{ key: string }>
+): CategorySignalWeights {
+  const enabled = new Set(activeCategories.map((c) => c.key));
+  const normalize = (value: number, baseline: number, min: number = 0.18, max: number = 1.9) =>
+    clamp(value / Math.max(1e-6, baseline), min, max);
+
+  const hitterPowerRaw =
+    (enabled.has("HR") ? 1.0 : 0) +
+    (enabled.has("RBI") ? 0.9 : 0) +
+    (enabled.has("SLG") ? 0.65 : 0) +
+    (enabled.has("R") ? 0.25 : 0);
+  const hitterSpeedRaw =
+    (enabled.has("SB") ? 1.0 : 0) +
+    (enabled.has("NSB") ? 1.0 : 0) +
+    (enabled.has("R") ? 0.25 : 0);
+  const hitterRateRaw =
+    (enabled.has("AVG") ? 1.0 : 0) +
+    (enabled.has("OBP") ? 1.0 : 0) +
+    (enabled.has("SLG") ? 0.45 : 0);
+  const hitterPlayingRaw =
+    (enabled.has("R") ? 0.9 : 0) +
+    (enabled.has("RBI") ? 0.5 : 0) +
+    (enabled.has("HR") ? 0.3 : 0) +
+    (enabled.has("SB") || enabled.has("NSB") ? 0.2 : 0);
+
+  const pitcherStrikeoutRaw =
+    (enabled.has("K") ? 1.0 : 0) +
+    (enabled.has("QS") ? 0.45 : 0) +
+    (enabled.has("W") ? 0.35 : 0) +
+    (enabled.has("KBB") ? 0.3 : 0);
+  const pitcherRatioRaw =
+    (enabled.has("ERA") ? 1.0 : 0) +
+    (enabled.has("WHIP") ? 1.0 : 0) +
+    (enabled.has("KBB") ? 0.65 : 0);
+  const pitcherSavesRaw =
+    (enabled.has("SV") ? 1.0 : 0) +
+    (enabled.has("HLD") ? 0.8 : 0) +
+    (enabled.has("NSVH") ? 1.0 : 0);
+  const pitcherVolumeRaw =
+    (enabled.has("QS") ? 1.0 : 0) +
+    (enabled.has("W") ? 0.7 : 0) +
+    (enabled.has("K") ? 0.35 : 0) +
+    (enabled.has("ERA") ? 0.25 : 0) +
+    (enabled.has("WHIP") ? 0.25 : 0);
+
+  return {
+    hitterPower: normalize(hitterPowerRaw, 2.8),
+    hitterSpeed: normalize(hitterSpeedRaw, 1.25),
+    hitterRate: normalize(hitterRateRaw, 1.45),
+    hitterPlayingTime: normalize(hitterPlayingRaw, 1.9),
+    pitcherStrikeout: normalize(pitcherStrikeoutRaw, 1.75),
+    pitcherRatio: normalize(pitcherRatioRaw, 2.65),
+    pitcherSaves: normalize(pitcherSavesRaw, 1.0),
+    pitcherVolume: normalize(pitcherVolumeRaw, 1.85),
+  };
+}
+
 function scoreCandidate(
   features: PlayerDraftFeatures,
   profile: TeamDraftProfile,
   needs: TeamDraftNeeds,
+  categorySignals: CategorySignalWeights,
   currentPick: number,
   totalPicks: number,
   rng: () => number
@@ -245,17 +313,35 @@ function scoreCandidate(
   if (!features.isPitcher) {
     score += needs.hitterUrgency * 1.2;
     if (needs.blockHitter) score -= 2.4;
-    score += features.hitterPower * (0.75 + profile.powerBias * 0.24);
-    score += features.hitterSpeed * (0.72 + profile.speedBias * 0.26);
-    score += features.hitterRate * (0.55 + profile.ratioBias * 0.14);
-    score += features.hitterPlayingTime * 0.3;
+    score +=
+      features.hitterPower *
+      (0.75 + profile.powerBias * 0.24) *
+      categorySignals.hitterPower;
+    score +=
+      features.hitterSpeed *
+      (0.72 + profile.speedBias * 0.26) *
+      categorySignals.hitterSpeed;
+    score +=
+      features.hitterRate *
+      (0.55 + profile.ratioBias * 0.14) *
+      categorySignals.hitterRate;
+    score += features.hitterPlayingTime * 0.3 * categorySignals.hitterPlayingTime;
   } else {
     score += needs.pitcherUrgency * 1.2;
     if (needs.blockPitcher) score -= 2.4;
-    score += features.pitcherStrikeout * (0.78 + profile.starterBias * 0.2);
-    score += features.pitcherRatio * (0.64 + profile.ratioBias * 0.24);
-    score += features.pitcherSaves * (0.52 + profile.savesBias * 0.3);
-    score += features.pitcherVolume * 0.36;
+    score +=
+      features.pitcherStrikeout *
+      (0.78 + profile.starterBias * 0.2) *
+      categorySignals.pitcherStrikeout;
+    score +=
+      features.pitcherRatio *
+      (0.64 + profile.ratioBias * 0.24) *
+      categorySignals.pitcherRatio;
+    score +=
+      features.pitcherSaves *
+      (0.52 + profile.savesBias * 0.3) *
+      categorySignals.pitcherSaves;
+    score += features.pitcherVolume * 0.36 * categorySignals.pitcherVolume;
 
     if (features.role === "sp") {
       score += needs.spUrgency * 0.75;
@@ -293,6 +379,7 @@ export function simulateLeagueDistributions(
   const { hitterTarget, pitcherTarget, spTarget, rpTarget, rosterSize } =
     classifyTeamTargets(settings);
   const baselinePitcherShare = pitcherTarget / Math.max(1, rosterSize);
+  const categorySignals = buildCategorySignalWeights(activeCategories);
 
   const rng = mulberry32(seed);
   const playerFeatures = buildPlayerFeatures(allPlayers);
@@ -351,7 +438,15 @@ export function simulateLeagueDistributions(
         if (!candidate) continue;
         const features = playerFeatures.get(candidate.playerId);
         if (!features) continue;
-        const candidateScore = scoreCandidate(features, profile, needs, pick, totalPicks, rng);
+        const candidateScore = scoreCandidate(
+          features,
+          profile,
+          needs,
+          categorySignals,
+          pick,
+          totalPicks,
+          rng
+        );
         if (candidateScore > bestScore) {
           bestScore = candidateScore;
           chosenIdx = i;
@@ -395,12 +490,11 @@ export function simulateLeagueDistributions(
   const categories: Record<string, CategoryDistribution> = {};
   let samples = 0;
 
-  // ── Rate-stat standard deviation floors ─────────────────────────
-  // The simulation produces unrealistically tight rate-stat distributions
-  // because simulated teams all draft by similar ranking logic. Real roto
-  // leagues have much wider spreads due to diverse human strategies (punt
-  // ratios, heavy-reliever builds, etc.). We enforce empirical minimums
-  // based on real 10-14 team roto league data.
+  // ── Rate-stat standard deviation calibration ────────────────────
+  // The simulation can produce tighter rate-stat spreads than real roto
+  // leagues because simulated teams draft from similar heuristics. We blend
+  // the simulated std with empirical priors and apply a team-size factor so
+  // 8-team and 16-team leagues don't inherit identical rate spreads.
   const RATE_STD_FLOORS: Record<string, number> = {
     ERA: 0.30,    // Real leagues: 0.30–0.55
     WHIP: 0.045,  // Real leagues: 0.04–0.08
@@ -410,9 +504,8 @@ export function simulateLeagueDistributions(
     SLG: 0.018,   // Real leagues: 0.015–0.030
   };
 
-  // For rate stats, also apply a blending approach: use the larger of
-  // (simulated std) or (floor), then blend toward empirical targets to
-  // avoid being either too tight or too loose.
+  // Empirical targets anchor the expected spread; simulation still contributes
+  // via soft-floor blending so category variance can move with pool dynamics.
   const RATE_STD_TARGETS: Record<string, number> = {
     ERA: 0.38,
     WHIP: 0.055,
@@ -421,6 +514,8 @@ export function simulateLeagueDistributions(
     OBP: 0.010,
     SLG: 0.024,
   };
+
+  const teamSizeRateFactor = clamp(1 + ((settings.numTeams - 12) / 12) * 0.3, 0.85, 1.2);
 
   for (const c of activeCategories) {
     const vals = valuesByCat[c.key] ?? [];
@@ -432,13 +527,16 @@ export function simulateLeagueDistributions(
         : 0;
     let std = Math.sqrt(variance) || 1;
 
-    // Apply floor and blend for rate categories
+    // Apply team-size-aware floor/target and keep some simulated signal.
     const floor = RATE_STD_FLOORS[c.key];
     const target = RATE_STD_TARGETS[c.key];
     if (floor != null && target != null) {
-      std = Math.max(std, floor);
-      // Blend 60% simulated (floored), 40% empirical target
-      std = std * 0.6 + target * 0.4;
+      const scaledFloor = floor * teamSizeRateFactor;
+      const scaledTarget = target * teamSizeRateFactor;
+      const softFloored =
+        std < scaledFloor ? scaledFloor - (scaledFloor - std) * 0.2 : std;
+      // Keep empirical anchoring strong while preserving simulated movement.
+      std = softFloored * 0.45 + scaledTarget * 0.55;
     }
 
     categories[c.key] = { mean, std };

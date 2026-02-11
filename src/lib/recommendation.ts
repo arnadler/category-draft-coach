@@ -260,38 +260,36 @@ export function getRecommendations(
     }
 
     // ── Apply correlation-aware weighting ──────────────────────────
-    // Within each correlated group, sort deltas descending. The largest
-    // gain keeps its full category weight; subsequent gains in the same
-    // group are discounted. This prevents ace SPs from getting 3× credit
-    // for ERA+WHIP+KBB (all driven by the same underlying skill).
-    const discountApplied = new Set<string>();
+    // We discount only *positive* overlapping gains within a correlated
+    // group. Negative deltas stay at full weight so downside is not muted.
+    const discountedPositive = new Set<string>();
     for (const group of CORRELATION_GROUPS) {
       const groupCats = activeCategories.filter((c) => group.keys.has(c.key));
       if (groupCats.length <= 1) continue;
 
-      // Sort by weighted delta descending so we keep the largest at full value
-      const sorted = groupCats
+      const positiveDeltas = groupCats
         .map((c) => ({
           key: c.key,
           weightedDelta: (categoryImpact[c.key]?.delta ?? 0) * (catWeights[c.key] ?? 1),
         }))
+        .filter((x) => x.weightedDelta > 0)
         .sort((a, b) => b.weightedDelta - a.weightedDelta);
 
-      // First category in group: full weight. Subsequent: discounted.
-      for (let i = 0; i < sorted.length; i++) {
-        const { key, weightedDelta } = sorted[i];
+      // Largest positive gain in group stays full; other positive overlaps get discounted.
+      for (let i = 0; i < positiveDeltas.length; i++) {
+        const { key, weightedDelta } = positiveDeltas[i];
         if (i === 0) {
           totalWeightedZGain += weightedDelta;
         } else {
           totalWeightedZGain += weightedDelta * group.discount;
         }
-        discountApplied.add(key);
+        discountedPositive.add(key);
       }
     }
 
-    // Add non-grouped categories at full weight
+    // Add all categories not already counted via positive-group discount.
     for (const cat of activeCategories) {
-      if (discountApplied.has(cat.key)) continue;
+      if (discountedPositive.has(cat.key)) continue;
       const delta = categoryImpact[cat.key]?.delta ?? 0;
       const weight = catWeights[cat.key] ?? 1;
       totalWeightedZGain += delta * weight;
