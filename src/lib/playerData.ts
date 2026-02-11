@@ -27,6 +27,25 @@ function clamp01(value: unknown): number | undefined {
   return Math.max(0, Math.min(1, n));
 }
 
+function estimateRiskFromProjection(player: Player): number {
+  const adp = player.ADP ?? 260;
+
+  if (player.hitterOrPitcher === "hitter") {
+    const ab = player.AB ?? 0;
+    const playingTimeRisk = 1 - Math.min(1, ab / 620);
+    const speedVariance = (player.SB ?? 0) >= 30 ? 0.06 : 0;
+    const lateRoundRisk = Math.max(0, (adp - 120) / 320);
+    return Math.max(0.08, Math.min(0.95, 0.14 + playingTimeRisk * 0.58 + speedVariance + lateRoundRisk * 0.2));
+  }
+
+  const ip = player.IP ?? 0;
+  const playingTimeRisk = 1 - Math.min(1, ip / 180);
+  const isRelieverOnly = player.positions.includes("RP") && !player.positions.includes("SP");
+  const roleVolatility = isRelieverOnly ? 0.08 : 0;
+  const lateRoundRisk = Math.max(0, (adp - 140) / 320);
+  return Math.max(0.12, Math.min(0.95, 0.22 + playingTimeRisk * 0.62 + roleVolatility + lateRoundRisk * 0.18));
+}
+
 export function normalizePlayer(raw: Player): Player {
   const positions = normalizePositions(raw.positions);
   const hitterOrPitcher =
@@ -58,6 +77,29 @@ export function normalizePlayer(raw: Player): Player {
     if (p.IP != null && p.ERA != null && p.ER == null) {
       p.ER = Math.round((p.ERA * p.IP) / 9);
     }
+    if (p.IP != null && p.ER != null && p.ERA == null && p.IP > 0) {
+      p.ERA = (p.ER * 9) / p.IP;
+    }
+
+    // Some projection files provide WHIP but not HA/BBA.
+    // Backfill components so team WHIP aggregation is accurate.
+    if (p.IP != null && p.IP > 0 && p.WHIP != null) {
+      const baserunnersAllowed = p.WHIP * p.IP;
+      if (p.HA == null && p.BBA == null) {
+        // Use a stable league-average BB share when split components are missing.
+        const bbShare = 0.32;
+        p.BBA = Math.max(0, Math.round(baserunnersAllowed * bbShare));
+        p.HA = Math.max(0, Math.round(baserunnersAllowed - p.BBA));
+      } else if (p.HA == null && p.BBA != null) {
+        p.HA = Math.max(0, Math.round(baserunnersAllowed - p.BBA));
+      } else if (p.BBA == null && p.HA != null) {
+        p.BBA = Math.max(0, Math.round(baserunnersAllowed - p.HA));
+      }
+    }
+    if (p.WHIP == null && p.IP != null && p.IP > 0 && (p.HA != null || p.BBA != null)) {
+      p.WHIP = ((p.HA ?? 0) + (p.BBA ?? 0)) / p.IP;
+    }
+
     // Estimate QS for starters if not provided
     if (p.QS == null && p.IP != null && p.IP > 0) {
       const isSP = (p.positions ?? []).includes("SP");
@@ -74,6 +116,10 @@ export function normalizePlayer(raw: Player): Player {
     }
   }
 
+  if (p.risk == null) {
+    p.risk = estimateRiskFromProjection(p);
+  }
+
   return p;
 }
 
@@ -88,4 +134,3 @@ export function getBundledMeta(): PlayerDatasetMeta {
     rowCount: (bundledPlayers as Player[]).length,
   };
 }
-

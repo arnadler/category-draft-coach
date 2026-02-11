@@ -35,6 +35,29 @@ const POSITION_SCARCITY_BONUS: Record<string, number> = {
   DH: -0.05, // DH-only is a slight negative
 };
 
+const RATE_HIGHER_CATS = new Set(["AVG", "OBP", "SLG", "KBB"]);
+const RATE_LOWER_CATS = new Set(["ERA", "WHIP"]);
+
+function scaleFallbackMean(catKey: string, base: number, numTeams: number): number {
+  const teamScale = 12 / Math.max(2, numTeams);
+
+  if (RATE_HIGHER_CATS.has(catKey)) {
+    return base * (1 + (teamScale - 1) * 0.12);
+  }
+  if (RATE_LOWER_CATS.has(catKey)) {
+    return base * (1 - (teamScale - 1) * 0.18);
+  }
+  return base * Math.pow(teamScale, 0.78);
+}
+
+function scaleFallbackStd(catKey: string, base: number, numTeams: number): number {
+  const teamScale = 12 / Math.max(2, numTeams);
+  if (RATE_HIGHER_CATS.has(catKey) || RATE_LOWER_CATS.has(catKey)) {
+    return base * (1 + Math.abs(teamScale - 1) * 0.08);
+  }
+  return base * Math.pow(teamScale, 0.55);
+}
+
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
@@ -155,6 +178,17 @@ export function getRecommendations(
   const activeCategories = settings.categories.filter((c) => c.enabled);
   const targetsFallback = settings.targets;
   const stdevsFallback = DEFAULT_STDEVS;
+  const getMoments = (catKey: string): { mean: number; std: number } => {
+    const sim = leagueDists?.categories?.[catKey];
+    if (sim) return { mean: sim.mean, std: sim.std };
+
+    const baseMean = targetsFallback[catKey] ?? DEFAULT_TARGETS[catKey] ?? 0;
+    const baseStd = stdevsFallback[catKey] ?? 1;
+    return {
+      mean: scaleFallbackMean(catKey, baseMean, settings.numTeams),
+      std: Math.max(1e-6, scaleFallbackStd(catKey, baseStd, settings.numTeams)),
+    };
+  };
 
   const emptySlots = expandRosterSlots(settings.rosterConfig);
   const currentAssigned = assignPlayersToSlots(myDraftedPlayers, emptySlots);
@@ -164,13 +198,7 @@ export function getRecommendations(
   // Current z-scores
   const currentZScores: Record<string, number> = {};
   for (const cat of activeCategories) {
-    const mean =
-      leagueDists?.categories?.[cat.key]?.mean ??
-      targetsFallback[cat.key] ??
-      DEFAULT_TARGETS[cat.key] ??
-      0;
-    const std =
-      leagueDists?.categories?.[cat.key]?.std ?? stdevsFallback[cat.key] ?? 1;
+    const { mean, std } = getMoments(cat.key);
     const valForZ = getCategoryValueForZ(currentTotals, cat.key, mean);
     currentZScores[cat.key] = computeZScore(valForZ, mean, std, cat.direction);
   }
@@ -203,13 +231,7 @@ export function getRecommendations(
     let totalWeightedZGain = 0;
 
     for (const cat of activeCategories) {
-      const mean =
-        leagueDists?.categories?.[cat.key]?.mean ??
-        targetsFallback[cat.key] ??
-        DEFAULT_TARGETS[cat.key] ??
-        0;
-      const std =
-        leagueDists?.categories?.[cat.key]?.std ?? stdevsFallback[cat.key] ?? 1;
+      const { mean, std } = getMoments(cat.key);
       const valForZ = getCategoryValueForZ(newTotals, cat.key, mean);
       const newZ = computeZScore(valForZ, mean, std, cat.direction);
       const oldZ = currentZScores[cat.key];
