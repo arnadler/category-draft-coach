@@ -395,6 +395,33 @@ export function simulateLeagueDistributions(
   const categories: Record<string, CategoryDistribution> = {};
   let samples = 0;
 
+  // ── Rate-stat standard deviation floors ─────────────────────────
+  // The simulation produces unrealistically tight rate-stat distributions
+  // because simulated teams all draft by similar ranking logic. Real roto
+  // leagues have much wider spreads due to diverse human strategies (punt
+  // ratios, heavy-reliever builds, etc.). We enforce empirical minimums
+  // based on real 10-14 team roto league data.
+  const RATE_STD_FLOORS: Record<string, number> = {
+    ERA: 0.30,    // Real leagues: 0.30–0.55
+    WHIP: 0.045,  // Real leagues: 0.04–0.08
+    KBB: 0.38,    // Real leagues: 0.35–0.65
+    AVG: 0.008,   // Real leagues: 0.007–0.012
+    OBP: 0.008,   // Real leagues: 0.007–0.012
+    SLG: 0.018,   // Real leagues: 0.015–0.030
+  };
+
+  // For rate stats, also apply a blending approach: use the larger of
+  // (simulated std) or (floor), then blend toward empirical targets to
+  // avoid being either too tight or too loose.
+  const RATE_STD_TARGETS: Record<string, number> = {
+    ERA: 0.38,
+    WHIP: 0.055,
+    KBB: 0.48,
+    AVG: 0.010,
+    OBP: 0.010,
+    SLG: 0.024,
+  };
+
   for (const c of activeCategories) {
     const vals = valuesByCat[c.key] ?? [];
     samples = Math.max(samples, vals.length);
@@ -403,7 +430,17 @@ export function simulateLeagueDistributions(
       vals.length > 1
         ? vals.reduce((s, v) => s + (v - mean) * (v - mean), 0) / (vals.length - 1)
         : 0;
-    const std = Math.sqrt(variance) || 1;
+    let std = Math.sqrt(variance) || 1;
+
+    // Apply floor and blend for rate categories
+    const floor = RATE_STD_FLOORS[c.key];
+    const target = RATE_STD_TARGETS[c.key];
+    if (floor != null && target != null) {
+      std = Math.max(std, floor);
+      // Blend 60% simulated (floored), 40% empirical target
+      std = std * 0.6 + target * 0.4;
+    }
+
     categories[c.key] = { mean, std };
   }
 

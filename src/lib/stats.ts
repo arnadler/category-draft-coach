@@ -246,7 +246,10 @@ export function getCategoryValueForZ(
     if (AB <= 0) return mean;
     if (AB >= RATE_FULL_THRESHOLDS.hitterAB) return totals.SLG;
     const priorAB = RATE_PRIORS.hitterAB;
-    const totalBases = totals["2B"] + 2 * totals["3B"] + 3 * totals.HR + (totals.H - totals["2B"] - totals["3B"] - totals.HR);
+    // Total bases = singles + 2*doubles + 3*triples + 4*HR
+    // = (H - 2B - 3B - HR) + 2*(2B) + 3*(3B) + 4*HR
+    // = H + 2B + 2*(3B) + 3*HR
+    const totalBases = totals.H + totals["2B"] + 2 * totals["3B"] + 3 * totals.HR;
     return (totalBases + mean * priorAB) / (AB + priorAB);
   }
 

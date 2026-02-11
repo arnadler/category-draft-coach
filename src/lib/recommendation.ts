@@ -30,13 +30,29 @@ const POSITION_SCARCITY_BONUS: Record<string, number> = {
   "3B": 0.03,
   "1B": 0.0,
   OF: 0.0,
-  SP: 0.05,  // Aces are valuable early
-  RP: 0.02,
+  SP: 0.03,  // Slight ace premium (correlation discount handles the rest)
+  RP: 0.06,  // Elite closers/holders are scarce; only contribute to NSVH
   DH: -0.05, // DH-only is a slight negative
 };
 
 const RATE_HIGHER_CATS = new Set(["AVG", "OBP", "SLG", "KBB"]);
 const RATE_LOWER_CATS = new Set(["ERA", "WHIP"]);
+
+// ── Correlation discount groups ─────────────────────────────────────
+// Categories within the same group are highly correlated (e.g. a pitcher
+// with great ERA almost always has great WHIP and K/BB). If we treat them
+// independently, an ace SP gets 3× z-score credit for what is essentially
+// one skill — being a good pitcher. We discount the *marginal z-gain*
+// within each correlated group so that the total contribution is capped.
+//
+// The discount factor is the fraction applied to the 2nd, 3rd, … category
+// gains within a correlated group (the biggest gain is kept at full weight).
+const CORRELATION_GROUPS: { keys: Set<string>; discount: number }[] = [
+  // Pitcher ratio stats: ERA, WHIP, KBB are ~0.75+ correlated
+  { keys: new Set(["ERA", "WHIP", "KBB"]), discount: 0.40 },
+  // Hitter rate stats: AVG, OBP, SLG are ~0.60+ correlated
+  { keys: new Set(["AVG", "OBP", "SLG"]), discount: 0.50 },
+];
 
 function scaleFallbackMean(catKey: string, base: number, numTeams: number): number {
   const teamScale = 12 / Math.max(2, numTeams);
@@ -241,7 +257,42 @@ export function getRecommendations(
       const beforeRaw = getCategoryValue(currentTotals, cat.key);
       const afterRaw = getCategoryValue(newTotals, cat.key);
       rawImpact[cat.key] = { before: beforeRaw, after: afterRaw, delta: afterRaw - beforeRaw };
+    }
 
+    // ── Apply correlation-aware weighting ──────────────────────────
+    // Within each correlated group, sort deltas descending. The largest
+    // gain keeps its full category weight; subsequent gains in the same
+    // group are discounted. This prevents ace SPs from getting 3× credit
+    // for ERA+WHIP+KBB (all driven by the same underlying skill).
+    const discountApplied = new Set<string>();
+    for (const group of CORRELATION_GROUPS) {
+      const groupCats = activeCategories.filter((c) => group.keys.has(c.key));
+      if (groupCats.length <= 1) continue;
+
+      // Sort by weighted delta descending so we keep the largest at full value
+      const sorted = groupCats
+        .map((c) => ({
+          key: c.key,
+          weightedDelta: (categoryImpact[c.key]?.delta ?? 0) * (catWeights[c.key] ?? 1),
+        }))
+        .sort((a, b) => b.weightedDelta - a.weightedDelta);
+
+      // First category in group: full weight. Subsequent: discounted.
+      for (let i = 0; i < sorted.length; i++) {
+        const { key, weightedDelta } = sorted[i];
+        if (i === 0) {
+          totalWeightedZGain += weightedDelta;
+        } else {
+          totalWeightedZGain += weightedDelta * group.discount;
+        }
+        discountApplied.add(key);
+      }
+    }
+
+    // Add non-grouped categories at full weight
+    for (const cat of activeCategories) {
+      if (discountApplied.has(cat.key)) continue;
+      const delta = categoryImpact[cat.key]?.delta ?? 0;
       const weight = catWeights[cat.key] ?? 1;
       totalWeightedZGain += delta * weight;
     }
@@ -267,11 +318,11 @@ export function getRecommendations(
     const upsideBonus = playerRisk * riskTolerance * 0.12;
     totalWeightedZGain += upsideBonus - conservativePenalty;
 
-    // ADP awareness: bonus for elite players, penalty for reaching
+    // ADP awareness: mild consensus-value signal, penalty for reaching
     if (player.ADP) {
-      // Elite player bonus: top ADP players get a significant boost
-      // This ensures players like Ohtani (ADP 1) are properly valued
-      const adpBonus = Math.max(0, (150 - player.ADP) / 150) * 0.5;
+      // Mild ADP bonus: consensus value signal (not position-biased)
+      // Reduced from 0.5 to 0.25 to prevent ADP from dominating z-score analysis
+      const adpBonus = Math.max(0, (150 - player.ADP) / 150) * 0.25;
       totalWeightedZGain += adpBonus;
 
       // Reaching penalty: slight penalty for picking someone well before their ADP
