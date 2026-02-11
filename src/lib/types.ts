@@ -27,9 +27,16 @@ export interface Player {
   BB?: number;
   HBP?: number;
   SF?: number;
+  /** Doubles */
+  "2B"?: number;
+  /** Triples */
+  "3B"?: number;
+  /** Caught Stealing */
+  CS?: number;
   // Pre-computed rate stats (used if raw counting stats are missing)
   AVG?: number;
   OBP?: number;
+  SLG?: number;
 
   // Pitcher projections
   W?: number;
@@ -45,6 +52,8 @@ export interface Player {
   WHIP?: number;
   QS?: number;
   HLD?: number;
+  /** Blown Saves */
+  BSV?: number;
 
   // Meta
   ADP?: number;

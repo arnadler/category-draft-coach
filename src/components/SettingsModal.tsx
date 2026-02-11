@@ -370,7 +370,7 @@ export function SettingsModal({
                 <span className="text-sm font-semibold text-zinc-900">{c.label}</span>
                 <input
                   type="number"
-                  step={c.key === "AVG" || c.key === "OBP" || c.key === "ERA" || c.key === "WHIP" ? 0.001 : 1}
+                  step={["AVG", "OBP", "SLG", "ERA", "WHIP", "KBB"].includes(c.key) ? 0.01 : 1}
                   value={settings.targets[c.key] ?? ""}
                   onChange={(e) =>
                     onChangeSettings({
@@ -453,11 +453,15 @@ export function SettingsModal({
                           "HR",
                           "RBI",
                           "SB",
+                          "CS",
                           "AB",
                           "H",
                           "BB",
+                          "2B",
+                          "3B",
                           "AVG",
                           "OBP",
+                          "SLG",
                           "W",
                           "SV",
                           "K",
@@ -469,6 +473,7 @@ export function SettingsModal({
                           "WHIP",
                           "QS",
                           "HLD",
+                          "BSV",
                         ] as const
                       ).map((key) => (
                         <label key={key} className="grid gap-1 text-sm">

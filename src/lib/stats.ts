@@ -15,21 +15,33 @@ export interface RosterTotals {
   HR: number;
   RBI: number;
   SB: number;
+  CS: number;
+  /** Net Steals: SB - CS */
+  NSB: number;
   // Hitter denominators (for rate stats)
   AB: number;
   H: number;
   BB: number;
   HBP: number;
   SF: number;
+  /** Doubles */
+  "2B": number;
+  /** Triples */
+  "3B": number;
   // Hitter rate stats (computed)
   AVG: number;
   OBP: number;
+  /** Slugging Percentage */
+  SLG: number;
   // Pitcher counting
   W: number;
   SV: number;
   K: number;
   QS: number;
   HLD: number;
+  BSV: number;
+  /** SV + HLD - BSV */
+  NSVH: number;
   // Pitcher denominators
   IP: number;
   ER: number;
@@ -38,6 +50,8 @@ export interface RosterTotals {
   // Pitcher rate stats (computed)
   ERA: number;
   WHIP: number;
+  /** K/BB ratio */
+  KBB: number;
 }
 
 /**
@@ -55,15 +69,21 @@ export function computeRosterTotals(players: Player[]): RosterTotals {
   const HR = hitters.reduce((s, p) => s + (p.HR ?? 0), 0);
   const RBI = hitters.reduce((s, p) => s + (p.RBI ?? 0), 0);
   const SB = hitters.reduce((s, p) => s + (p.SB ?? 0), 0);
+  const CS = hitters.reduce((s, p) => s + (p.CS ?? 0), 0);
   const BB = hitters.reduce((s, p) => s + (p.BB ?? 0), 0);
   const HBP = hitters.reduce((s, p) => s + (p.HBP ?? 0), 0);
   const SF = hitters.reduce((s, p) => s + (p.SF ?? 0), 0);
+  const doubles = hitters.reduce((s, p) => s + (p["2B"] ?? 0), 0);
+  const triples = hitters.reduce((s, p) => s + (p["3B"] ?? 0), 0);
+  const NSB = SB - CS;
 
   // Compute rate stats from components (not averaging averages)
   const AVG = AB > 0 ? H / AB : 0;
-  // OBP = (H + BB + HBP) / (AB + BB + HBP + SF)
   const obpDenom = AB + BB + HBP + SF;
   const OBP = obpDenom > 0 ? (H + BB + HBP) / obpDenom : 0;
+  // SLG = (1B + 2*2B + 3*3B + 4*HR) / AB
+  const singles = H - doubles - triples - HR;
+  const SLG = AB > 0 ? (singles + 2 * doubles + 3 * triples + 4 * HR) / AB : 0;
 
   // Sum pitcher counting stats
   const IP = pitchers.reduce((s, p) => s + (p.IP ?? 0), 0);
@@ -75,15 +95,16 @@ export function computeRosterTotals(players: Player[]): RosterTotals {
   const K = pitchers.reduce((s, p) => s + (p.K ?? 0), 0);
   const QS = pitchers.reduce((s, p) => s + (p.QS ?? 0), 0);
   const HLD = pitchers.reduce((s, p) => s + (p.HLD ?? 0), 0);
+  const BSV = pitchers.reduce((s, p) => s + (p.BSV ?? 0), 0);
+  const NSVH = SV + HLD - BSV;
 
-  // ERA = (ER * 9) / IP
   const ERA = IP > 0 ? (ER * 9) / IP : 0;
-  // WHIP = (BB + H) / IP  (pitcher BB and H)
   const WHIP = IP > 0 ? (BBA + HA) / IP : 0;
+  const KBB = BBA > 0 ? K / BBA : 0;
 
   return {
-    R, HR, RBI, SB, AB, H, BB, HBP, SF, AVG, OBP,
-    W, SV, K, QS, HLD, IP, ER, HA, BBA, ERA, WHIP,
+    R, HR, RBI, SB, CS, NSB, AB, H, BB, HBP, SF, "2B": doubles, "3B": triples, AVG, OBP, SLG,
+    W, SV, K, QS, HLD, BSV, NSVH, IP, ER, HA, BBA, ERA, WHIP, KBB,
   };
 }
 
@@ -112,14 +133,19 @@ export function computeRosterTotalsFromSlots(
   const HR = hitters.reduce((s, { p, m }) => s + (p.HR ?? 0) * m, 0);
   const RBI = hitters.reduce((s, { p, m }) => s + (p.RBI ?? 0) * m, 0);
   const SB = hitters.reduce((s, { p, m }) => s + (p.SB ?? 0) * m, 0);
+  const CS = hitters.reduce((s, { p, m }) => s + (p.CS ?? 0) * m, 0);
   const BB = hitters.reduce((s, { p, m }) => s + (p.BB ?? 0) * m, 0);
   const HBP = hitters.reduce((s, { p, m }) => s + (p.HBP ?? 0) * m, 0);
   const SF = hitters.reduce((s, { p, m }) => s + (p.SF ?? 0) * m, 0);
+  const doubles = hitters.reduce((s, { p, m }) => s + (p["2B"] ?? 0) * m, 0);
+  const triples = hitters.reduce((s, { p, m }) => s + (p["3B"] ?? 0) * m, 0);
+  const NSB = SB - CS;
 
   const AVG = AB > 0 ? H / AB : 0;
   const obpDenom = AB + BB + HBP + SF;
-  // If SF/HBP not available in dataset, these default to 0 and we get simplified OBP.
   const OBP = obpDenom > 0 ? (H + BB + HBP) / obpDenom : 0;
+  const singles = H - doubles - triples - HR;
+  const SLG = AB > 0 ? (singles + 2 * doubles + 3 * triples + 4 * HR) / AB : 0;
 
   const IP = pitchers.reduce((s, { p, m }) => s + (p.IP ?? 0) * m, 0);
   const ER = pitchers.reduce((s, { p, m }) => s + (p.ER ?? 0) * m, 0);
@@ -130,33 +156,16 @@ export function computeRosterTotalsFromSlots(
   const K = pitchers.reduce((s, { p, m }) => s + (p.K ?? 0) * m, 0);
   const QS = pitchers.reduce((s, { p, m }) => s + (p.QS ?? 0) * m, 0);
   const HLD = pitchers.reduce((s, { p, m }) => s + (p.HLD ?? 0) * m, 0);
+  const BSV = pitchers.reduce((s, { p, m }) => s + (p.BSV ?? 0) * m, 0);
+  const NSVH = SV + HLD - BSV;
 
   const ERA = IP > 0 ? (ER * 9) / IP : 0;
   const WHIP = IP > 0 ? (BBA + HA) / IP : 0;
+  const KBB = BBA > 0 ? K / BBA : 0;
 
   return {
-    R,
-    HR,
-    RBI,
-    SB,
-    AB,
-    H,
-    BB,
-    HBP,
-    SF,
-    AVG,
-    OBP,
-    W,
-    SV,
-    K,
-    QS,
-    HLD,
-    IP,
-    ER,
-    HA,
-    BBA,
-    ERA,
-    WHIP,
+    R, HR, RBI, SB, CS, NSB, AB, H, BB, HBP, SF, "2B": doubles, "3B": triples, AVG, OBP, SLG,
+    W, SV, K, QS, HLD, BSV, NSVH, IP, ER, HA, BBA, ERA, WHIP, KBB,
   };
 }
 
@@ -232,6 +241,28 @@ export function getCategoryValueForZ(
     return (baserunners + mean * priorIP) / (IP + priorIP);
   }
 
+  if (catKey === "SLG") {
+    const AB = totals.AB;
+    if (AB <= 0) return mean;
+    if (AB >= RATE_FULL_THRESHOLDS.hitterAB) return totals.SLG;
+    const priorAB = RATE_PRIORS.hitterAB;
+    const totalBases = totals["2B"] + 2 * totals["3B"] + 3 * totals.HR + (totals.H - totals["2B"] - totals["3B"] - totals.HR);
+    return (totalBases + mean * priorAB) / (AB + priorAB);
+  }
+
+  if (catKey === "KBB") {
+    const BBA = totals.BBA;
+    const K = totals.K;
+    if (BBA <= 0 && K <= 0) return mean;
+    const priorIP = RATE_PRIORS.pitcherIP;
+    if (totals.IP >= RATE_FULL_THRESHOLDS.pitcherIP) return totals.KBB;
+    // Stabilize by adding prior K and BB proportional to the mean ratio
+    // Assume roughly 6 K/9 and 2 BB/9 as baseline denominators for the prior
+    const priorK = mean * (priorIP / 9) * 2;
+    const priorBB = (priorIP / 9) * 2;
+    return (K + priorK) / (BBA + priorBB);
+  }
+
   return getCategoryValue(totals, catKey);
 }
 
@@ -264,7 +295,7 @@ export function getPlayerCategoryContribution(
 ): number {
   // For rate stats, we need to compute the new rate with the player added
   // and return the delta. For counting stats, just return the player's value.
-  const countingStats = ["R", "HR", "RBI", "SB", "W", "SV", "K", "QS", "HLD"];
+  const countingStats = ["R", "HR", "RBI", "SB", "NSB", "W", "SV", "K", "QS", "HLD", "NSVH"];
   if (countingStats.includes(catKey)) {
     return (player as unknown as Record<string, unknown>)[catKey] as number ?? 0;
   }
@@ -287,13 +318,19 @@ export function addPlayerToTotals(current: RosterTotals, player: Player): Roster
     t.HR += player.HR ?? 0;
     t.RBI += player.RBI ?? 0;
     t.SB += player.SB ?? 0;
+    t.CS += player.CS ?? 0;
     t.BB += player.BB ?? 0;
     t.HBP += player.HBP ?? 0;
     t.SF += player.SF ?? 0;
+    t["2B"] += player["2B"] ?? 0;
+    t["3B"] += player["3B"] ?? 0;
+    t.NSB = t.SB - t.CS;
     // Recompute rates
     t.AVG = t.AB > 0 ? t.H / t.AB : 0;
     const obpDenom = t.AB + t.BB + t.HBP + t.SF;
     t.OBP = obpDenom > 0 ? (t.H + t.BB + t.HBP) / obpDenom : 0;
+    const singles = t.H - t["2B"] - t["3B"] - t.HR;
+    t.SLG = t.AB > 0 ? (singles + 2 * t["2B"] + 3 * t["3B"] + 4 * t.HR) / t.AB : 0;
   } else {
     t.IP += player.IP ?? 0;
     t.ER += player.ER ?? 0;
@@ -304,9 +341,12 @@ export function addPlayerToTotals(current: RosterTotals, player: Player): Roster
     t.K += player.K ?? 0;
     t.QS += player.QS ?? 0;
     t.HLD += player.HLD ?? 0;
+    t.BSV += player.BSV ?? 0;
+    t.NSVH = t.SV + t.HLD - t.BSV;
     // Recompute rates
     t.ERA = t.IP > 0 ? (t.ER * 9) / t.IP : 0;
     t.WHIP = t.IP > 0 ? (t.BBA + t.HA) / t.IP : 0;
+    t.KBB = t.BBA > 0 ? t.K / t.BBA : 0;
   }
 
   return t;
@@ -316,11 +356,10 @@ export function addPlayerToTotals(current: RosterTotals, player: Player): Roster
  * Format a stat value for display.
  */
 export function formatStat(catKey: string, value: number): string {
-  const rateStats = ["AVG", "OBP", "ERA", "WHIP"];
-  if (rateStats.includes(catKey)) {
-    if (catKey === "AVG" || catKey === "OBP") {
-      return value.toFixed(3);
-    }
+  if (catKey === "AVG" || catKey === "OBP" || catKey === "SLG") {
+    return value.toFixed(3);
+  }
+  if (catKey === "ERA" || catKey === "WHIP" || catKey === "KBB") {
     return value.toFixed(2);
   }
   return Math.round(value).toString();

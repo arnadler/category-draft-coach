@@ -22,10 +22,10 @@ export const DEFAULT_ROSTER_COUNTS: RosterCounts = {
   SS: 1,
   OF: 3,
   UTIL: 1,
-  SP: 5,
+  SP: 4,
   RP: 2,
   P: 1,
-  BN: 3,
+  BN: 12,
 };
 
 export function getRosterCounts(config: RosterConfig): RosterCounts {

@@ -13,13 +13,17 @@ export type PlayerFieldKey =
   | "HR"
   | "RBI"
   | "SB"
+  | "CS"
   | "AB"
   | "H"
   | "BB"
   | "HBP"
   | "SF"
+  | "2B"
+  | "3B"
   | "AVG"
   | "OBP"
+  | "SLG"
   | "W"
   | "SV"
   | "K"
@@ -30,7 +34,8 @@ export type PlayerFieldKey =
   | "ERA"
   | "WHIP"
   | "QS"
-  | "HLD";
+  | "HLD"
+  | "BSV";
 
 export type CsvColumnMap = Partial<Record<PlayerFieldKey, string>>;
 
@@ -48,13 +53,17 @@ const SYNONYMS: Partial<Record<PlayerFieldKey, string[]>> = {
   HR: ["hr", "home runs", "homeruns", "home_runs"],
   RBI: ["rbi"],
   SB: ["sb", "steals", "stolen bases", "stolen_bases"],
+  CS: ["cs", "caught stealing", "caught_stealing"],
   AB: ["ab", "at bats", "atbats"],
   H: ["h", "hits"],
   BB: ["bb", "walks"],
   HBP: ["hbp"],
   SF: ["sf", "sac flies", "sacrifice flies"],
+  "2B": ["2b", "doubles"],
+  "3B": ["3b", "triples"],
   AVG: ["avg", "ba", "batting avg", "batting average"],
   OBP: ["obp"],
+  SLG: ["slg", "slug", "slugging", "slugging pct", "slugging percentage"],
 
   W: ["w", "wins"],
   SV: ["sv", "saves"],
@@ -67,6 +76,7 @@ const SYNONYMS: Partial<Record<PlayerFieldKey, string[]>> = {
   WHIP: ["whip"],
   QS: ["qs", "quality starts", "quality_starts"],
   HLD: ["hld", "holds"],
+  BSV: ["bsv", "bs", "blown saves", "blown_saves"],
 };
 
 function normHeader(h: string): string {
@@ -184,13 +194,17 @@ export function importPlayersFromRows(
       "HR",
       "RBI",
       "SB",
+      "CS",
       "AB",
       "H",
       "BB",
       "HBP",
       "SF",
+      "2B",
+      "3B",
       "AVG",
       "OBP",
+      "SLG",
       "W",
       "SV",
       "K",
@@ -202,6 +216,7 @@ export function importPlayersFromRows(
       "WHIP",
       "QS",
       "HLD",
+      "BSV",
     ];
 
     for (const key of numericFields) {

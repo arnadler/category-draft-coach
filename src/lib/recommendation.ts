@@ -61,9 +61,9 @@ function applyRiskForScoring(player: Player, riskTolerance: number): Player {
   };
 
   if (p.hitterOrPitcher === "hitter") {
-    for (const k of ["AB", "H", "R", "HR", "RBI", "SB", "BB", "HBP", "SF"] as const) scaleField(k);
+    for (const k of ["AB", "H", "R", "HR", "RBI", "SB", "CS", "BB", "HBP", "SF", "2B", "3B"] as const) scaleField(k);
   } else {
-    for (const k of ["IP", "ER", "HA", "BBA", "W", "SV", "K", "QS", "HLD"] as const) scaleField(k);
+    for (const k of ["IP", "ER", "HA", "BBA", "W", "SV", "K", "QS", "HLD", "BSV"] as const) scaleField(k);
   }
 
   return p;
