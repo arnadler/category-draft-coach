@@ -263,6 +263,11 @@ export function useDraftState() {
     return allPlayers.filter((p) => !drafted.has(p.playerId));
   }, [allPlayers, draftState]);
 
+  const offBoardPlayers = useMemo(() => {
+    const offBoardSet = new Set(draftState.otherPicks);
+    return allPlayers.filter((p) => offBoardSet.has(p.playerId));
+  }, [allPlayers, draftState.otherPicks]);
+
   const availableSearchRows = useMemo<SearchPlayerRow[]>(
     () =>
       availablePlayers.map((p) => ({
@@ -493,6 +498,20 @@ export function useDraftState() {
     setDraftState(createEmptyDraftState());
   }, [setDraftState]);
 
+  const handleRestoreBackup = useCallback(
+    (backup: { settings?: unknown; draftState?: unknown }) => {
+      if (backup.settings != null) {
+        const migratedSettings = migrateLeagueSettings(backup.settings);
+        if (migratedSettings) setSettings(migratedSettings);
+      }
+      if (backup.draftState != null) {
+        const migratedDraft = migrateDraftState(backup.draftState);
+        if (migratedDraft) setDraftState(migratedDraft);
+      }
+    },
+    [setSettings, setDraftState]
+  );
+
   const handleUpdateSettings = useCallback(
     (next: LeagueSettings) => {
       setSettings(next);
@@ -507,6 +526,7 @@ export function useDraftState() {
     draftState,
     allPlayers,
     availablePlayers,
+    offBoardPlayers,
     myRoster,
     rosterSlots,
     rosterTotals,
@@ -524,6 +544,7 @@ export function useDraftState() {
     handleImportPlayers,
     handleResetDataset,
     handleResetDraft,
+    handleRestoreBackup,
     handleUpdateSettings,
   };
 }

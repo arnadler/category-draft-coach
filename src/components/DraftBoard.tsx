@@ -6,7 +6,7 @@
  * Plus QuickAdd at the top and settings modal.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDraftState } from "@/hooks/useDraftState";
 import { QuickAdd } from "./QuickAdd";
 import { PlayerPool } from "./PlayerPool";
@@ -22,6 +22,7 @@ export function DraftBoard() {
     settings,
     draftState,
     availablePlayers,
+    offBoardPlayers,
     rosterSlots,
     rosterTotals,
     recommendations,
@@ -31,14 +32,54 @@ export function DraftBoard() {
     handleDraftMe,
     handleDraftOther,
     handleUndoLast,
+    handleUndoOther,
     handleSetRisk,
     handleImportPlayers,
     handleResetDataset,
+    handleResetDraft,
+    handleRestoreBackup,
     handleUpdateSettings,
   } = useDraftState();
 
   const [showSettings, setShowSettings] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("picks");
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    setLastSaved(new Date());
+  }, [draftState, settings, isLoaded]);
+
+  const handleExportDraft = () => {
+    const data = { version: 1, exportedAt: Date.now(), settings, draftState };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `draft-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = JSON.parse(evt.target?.result as string);
+        handleRestoreBackup(data);
+      } catch {
+        alert("Could not read backup file. Make sure it's a valid draft backup JSON.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
 
   const syncLabel = !extensionSync.extensionDetected
     ? "Install CBS Sync extension"
@@ -79,7 +120,12 @@ export function DraftBoard() {
               Maximize your roto points with z-score analysis
             </p>
           </div>
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-2 md:gap-3 flex-wrap justify-end">
+            {lastSaved && (
+              <span className="hidden sm:inline text-xs text-green-600 font-medium">
+                ✓ Saved {lastSaved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
             <div className="text-xs md:text-sm text-zinc-500">
               <span className="font-bold text-blue-600">
                 {draftState.myPicks.length}
@@ -97,6 +143,58 @@ export function DraftBoard() {
               <span className="hidden sm:inline">available</span>
               <span className="sm:hidden">A</span>
             </div>
+            <button
+              onClick={handleExportDraft}
+              title="Save a backup file you can restore later"
+              className="px-2 py-1.5 md:px-3 md:py-2 bg-emerald-100 text-emerald-700 rounded-lg
+                         hover:bg-emerald-200 font-semibold text-xs md:text-sm"
+            >
+              <span className="hidden sm:inline">Backup</span>
+              <span className="sm:hidden">💾</span>
+            </button>
+            <button
+              onClick={() => importInputRef.current?.click()}
+              title="Restore from a previously saved backup file"
+              className="px-2 py-1.5 md:px-3 md:py-2 bg-zinc-100 text-zinc-600 rounded-lg
+                         hover:bg-zinc-200 font-semibold text-xs md:text-sm"
+            >
+              <span className="hidden sm:inline">Restore</span>
+              <span className="sm:hidden">📂</span>
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleImportBackup}
+            />
+            {showResetConfirm ? (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-zinc-600 hidden sm:inline">Clear all picks?</span>
+                <button
+                  onClick={() => { handleResetDraft(); setShowResetConfirm(false); }}
+                  className="px-2 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-xs"
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  className="px-2 py-1.5 bg-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-300 font-semibold text-xs"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                title="Clear all draft picks and start over"
+                className="px-2 py-1.5 md:px-3 md:py-2 bg-red-100 text-red-600 rounded-lg
+                           hover:bg-red-200 font-semibold text-xs md:text-sm"
+              >
+                <span className="hidden sm:inline">Reset</span>
+                <span className="sm:hidden">🗑️</span>
+              </button>
+            )}
             <button
               onClick={() => setShowSettings(true)}
               className="px-2 py-1.5 md:px-4 md:py-2 bg-zinc-200 text-zinc-700 rounded-lg
@@ -196,10 +294,11 @@ export function DraftBoard() {
             rosterSlots={rosterSlots}
             rosterTotals={rosterTotals}
             myPicks={draftState.myPicks}
-            otherPickCount={draftState.otherPicks.length}
+            offBoardPlayers={offBoardPlayers}
             settings={settings}
             leagueDists={leagueDists}
             onUndo={handleUndoLast}
+            onUndoOther={handleUndoOther}
           />
         </div>
 

@@ -6,7 +6,8 @@
  * and z-score indicators showing how competitive you are in each category.
  */
 
-import { RosterSlot, DraftPick, LeagueSettings } from "@/lib/types";
+import { useState } from "react";
+import { RosterSlot, DraftPick, LeagueSettings, Player } from "@/lib/types";
 import {
   RosterTotals,
   getCategoryValue,
@@ -21,10 +22,11 @@ interface MyRosterProps {
   rosterSlots: RosterSlot[];
   rosterTotals: RosterTotals;
   myPicks: DraftPick[];
-  otherPickCount: number;
+  offBoardPlayers: Player[];
   settings: LeagueSettings;
   leagueDists: LeagueCategoryDistributions | null;
   onUndo: () => void;
+  onUndoOther: (playerId: string) => void;
 }
 
 function ZScoreBar({ zscore }: { zscore: number }) {
@@ -75,11 +77,13 @@ export function MyRoster({
   rosterSlots,
   rosterTotals,
   myPicks,
-  otherPickCount,
+  offBoardPlayers,
   settings,
   leagueDists,
   onUndo,
+  onUndoOther,
 }: MyRosterProps) {
+  const [showOffBoard, setShowOffBoard] = useState(false);
   const activeCategories = settings.categories.filter((c) => c.enabled);
   const hitterCats = activeCategories.filter((c) => c.type === "hitter");
   const pitcherCats = activeCategories.filter((c) => c.type === "pitcher");
@@ -152,7 +156,14 @@ export function MyRoster({
           <h2 className="text-lg font-bold text-zinc-800">My Roster</h2>
           <p className="text-xs text-zinc-500">
             {myPicks.length} pick{myPicks.length !== 1 ? "s" : ""} made
-            {otherPickCount > 0 && ` | ${otherPickCount} off board`}
+            {offBoardPlayers.length > 0 && (
+              <button
+                onClick={() => setShowOffBoard((v) => !v)}
+                className="ml-1 text-orange-600 hover:text-orange-800 font-semibold underline"
+              >
+                | {offBoardPlayers.length} off board
+              </button>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -176,6 +187,42 @@ export function MyRoster({
           )}
         </div>
       </div>
+
+      {showOffBoard && offBoardPlayers.length > 0 && (
+        <div className="border-b border-zinc-200 bg-orange-50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-bold text-orange-800">
+              Off Board — Other Teams&apos; Picks
+            </h3>
+            <button
+              onClick={() => setShowOffBoard(false)}
+              className="text-xs text-zinc-500 hover:text-zinc-700"
+            >
+              Hide
+            </button>
+          </div>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {offBoardPlayers.map((player) => (
+              <div
+                key={player.playerId}
+                className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 border border-orange-100"
+              >
+                <div>
+                  <span className="text-sm font-medium text-zinc-800">{player.name}</span>
+                  <span className="text-xs text-zinc-400 ml-1">{player.positions.join("/")}</span>
+                </div>
+                <button
+                  onClick={() => onUndoOther(player.playerId)}
+                  className="text-xs text-red-500 hover:text-red-700 font-semibold px-2 py-1 rounded hover:bg-red-50"
+                  title="Put this player back in the available pool"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {/* Category Dashboard */}

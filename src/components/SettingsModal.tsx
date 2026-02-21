@@ -60,6 +60,7 @@ export function SettingsModal({
   const [activeTab, setActiveTab] = useState<"league" | "categories" | "roster" | "targets" | "import">(
     "league"
   );
+  const [showResetDatasetConfirm, setShowResetDatasetConfirm] = useState(false);
 
   const rosterCounts = useMemo(() => getRosterCounts(settings.rosterConfig), [settings.rosterConfig]);
 
@@ -205,18 +206,39 @@ export function SettingsModal({
                 <div><span className="font-medium">Imported:</span> {prettyTime(datasetMeta.importedAt)}</div>
               ) : null}
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onResetDataset();
-                  setImportWarnings([]);
-                  setImportError("");
-                }}
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
-              >
-                Reset to Sample
-              </button>
+            <div className="mt-4 flex flex-wrap gap-2 items-center">
+              {showResetDatasetConfirm ? (
+                <>
+                  <span className="text-sm text-zinc-700">This will clear your picks. Are you sure?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onResetDataset();
+                      setImportWarnings([]);
+                      setImportError("");
+                      setShowResetDatasetConfirm(false);
+                    }}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                  >
+                    Yes, Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowResetDatasetConfirm(false)}
+                    className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowResetDatasetConfirm(true)}
+                  className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+                >
+                  Reset to Sample
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setActiveTab("import")}
