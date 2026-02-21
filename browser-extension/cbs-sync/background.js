@@ -1,5 +1,6 @@
 const STORAGE_ENABLED_KEY = "cdc_sync_enabled";
 const MAX_PENDING_PICKS = 300;
+const MAX_PENDING_PICK_AGE_MS = 15 * 60 * 1000;
 
 const state = {
   enabled: true,
@@ -38,6 +39,7 @@ function sanitizePick(rawPick) {
 }
 
 function buildStatus() {
+  prunePendingPicks();
   return {
     enabled: state.enabled,
     lastCbsHeartbeatAt: state.lastCbsHeartbeatAt,
@@ -45,7 +47,15 @@ function buildStatus() {
   };
 }
 
+function prunePendingPicks(now = Date.now()) {
+  state.pendingPicks = state.pendingPicks.filter((pick) => {
+    if (!pick || typeof pick.detectedAt !== "number" || !Number.isFinite(pick.detectedAt)) return false;
+    return now - pick.detectedAt <= MAX_PENDING_PICK_AGE_MS;
+  });
+}
+
 function addPendingPicks(picks) {
+  prunePendingPicks();
   const accepted = [];
 
   for (const rawPick of picks) {
@@ -68,6 +78,21 @@ function addPendingPicks(picks) {
   }
 
   return accepted;
+}
+
+function ackPendingPicks(eventIds) {
+  if (!Array.isArray(eventIds) || eventIds.length === 0) return 0;
+  const ackIds = new Set(
+    eventIds
+      .filter((id) => typeof id === "string")
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0)
+  );
+  if (ackIds.size === 0) return 0;
+
+  const before = state.pendingPicks.length;
+  state.pendingPicks = state.pendingPicks.filter((pick) => !ackIds.has(pick.eventId));
+  return before - state.pendingPicks.length;
 }
 
 async function sendToAppTabs(message) {
@@ -127,12 +152,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "CDC_GET_STATUS") {
+    prunePendingPicks();
     sendResponse({ ok: true, status: buildStatus(), picks: state.pendingPicks.slice(-120) });
     return false;
   }
 
   if (message.type === "CDC_APP_HELLO") {
+    prunePendingPicks();
     sendResponse({ ok: true, status: buildStatus(), picks: state.pendingPicks.slice(-120) });
+    return false;
+  }
+
+  if (message.type === "CDC_ACK_PICKS") {
+    const acked = ackPendingPicks(message.eventIds);
+    sendStatusToApps().catch(() => null);
+    sendResponse({ ok: true, acked, status: buildStatus() });
     return false;
   }
 

@@ -148,6 +148,64 @@ function pitcherRole(player: Player): "sp" | "rp" | "hybrid" {
   return "sp";
 }
 
+function dedupePlayersById(players: Player[]): Player[] {
+  const seen = new Set<string>();
+  const deduped: Player[] = [];
+  for (const player of players) {
+    if (!player || seen.has(player.playerId)) continue;
+    seen.add(player.playerId);
+    deduped.push(player);
+  }
+  return deduped;
+}
+
+function shuffleInPlace<T>(arr: T[], rng: () => number): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j] as T;
+    arr[j] = tmp as T;
+  }
+}
+
+function assignPlayerToTeam(
+  player: Player,
+  team: number,
+  profile: TeamDraftProfile,
+  teams: Player[][],
+  teamH: number[],
+  teamP: number[],
+  teamSP: number[],
+  teamRP: number[],
+  playerFeatures: Map<string, PlayerDraftFeatures>,
+  spTarget: number,
+  rpTarget: number
+) {
+  teams[team]?.push(player);
+  if (player.hitterOrPitcher === "hitter") {
+    teamH[team] = (teamH[team] ?? 0) + 1;
+    return;
+  }
+
+  teamP[team] = (teamP[team] ?? 0) + 1;
+  const role = playerFeatures.get(player.playerId)?.role ?? pitcherRole(player);
+  if (role === "sp") {
+    teamSP[team] = (teamSP[team] ?? 0) + 1;
+    return;
+  }
+  if (role === "rp") {
+    teamRP[team] = (teamRP[team] ?? 0) + 1;
+    return;
+  }
+
+  const spDef = spTarget - (teamSP[team] ?? 0);
+  const rpDef = rpTarget - (teamRP[team] ?? 0);
+  if (spDef > rpDef) teamSP[team] = (teamSP[team] ?? 0) + 1;
+  else if (rpDef > spDef) teamRP[team] = (teamRP[team] ?? 0) + 1;
+  else if (profile.starterBias >= profile.savesBias) teamSP[team] = (teamSP[team] ?? 0) + 1;
+  else teamRP[team] = (teamRP[team] ?? 0) + 1;
+}
+
 function buildTeamProfiles(
   numTeams: number,
   baselinePitcherShare: number,
@@ -369,7 +427,7 @@ function scoreCandidate(
 export function simulateLeagueDistributions(
   allPlayers: Player[],
   settings: LeagueSettings,
-  opts?: { iterations?: number; seed?: number; randomness?: number }
+  opts?: { iterations?: number; seed?: number; randomness?: number; lockedPlayers?: Player[] }
 ): LeagueCategoryDistributions {
   const iterations = opts?.iterations ?? 160;
   const seed = opts?.seed ?? 1337;
@@ -383,6 +441,8 @@ export function simulateLeagueDistributions(
 
   const rng = mulberry32(seed);
   const playerFeatures = buildPlayerFeatures(allPlayers);
+  const lockedPlayers = dedupePlayersById(opts?.lockedPlayers ?? []);
+  const lockedIds = new Set(lockedPlayers.map((p) => p.playerId));
 
   const valuesByCat: Record<string, number[]> = {};
   for (const c of activeCategories) valuesByCat[c.key] = [];
@@ -391,6 +451,7 @@ export function simulateLeagueDistributions(
 
   for (let iter = 0; iter < iterations; iter++) {
     const draftOrder = allPlayers
+      .filter((p) => !lockedIds.has(p.playerId))
       .map((p) => ({ p, score: baseRank(p) + randn(rng) * randomness }))
       .sort((a, b) => a.score - b.score)
       .map((x) => x.p);
@@ -405,9 +466,41 @@ export function simulateLeagueDistributions(
     const teamRP = Array.from({ length: settings.numTeams }, () => 0);
 
     const totalPicks = settings.numTeams * rosterSize;
+    if (lockedPlayers.length > 0) {
+      const shuffledLocked = [...lockedPlayers];
+      shuffleInPlace(shuffledLocked, rng);
+
+      let nextTeam = Math.floor(rng() * settings.numTeams);
+      for (const locked of shuffledLocked) {
+        let assigned = false;
+        for (let attempts = 0; attempts < settings.numTeams; attempts++) {
+          const team = (nextTeam + attempts) % settings.numTeams;
+          if ((teams[team]?.length ?? 0) >= rosterSize) continue;
+          assignPlayerToTeam(
+            locked,
+            team,
+            teamProfiles[team]!,
+            teams,
+            teamH,
+            teamP,
+            teamSP,
+            teamRP,
+            playerFeatures,
+            spTarget,
+            rpTarget
+          );
+          nextTeam = (team + 1) % settings.numTeams;
+          assigned = true;
+          break;
+        }
+        if (!assigned) break;
+      }
+    }
 
     for (let pick = 0; pick < totalPicks; pick++) {
       const team = snakeTeamIndex(pick, settings.numTeams);
+      if ((teams[team]?.length ?? 0) >= rosterSize) continue;
+      if (remaining.length === 0) break;
       const profile = teamProfiles[team]!;
       const round = Math.floor(pick / settings.numTeams);
       const windowSize = Math.min(
@@ -456,25 +549,19 @@ export function simulateLeagueDistributions(
       const chosen = remaining.splice(chosenIdx, 1)[0];
       if (!chosen) continue;
 
-      teams[team].push(chosen);
-      if (chosen.hitterOrPitcher === "hitter") {
-        teamH[team] += 1;
-      } else {
-        teamP[team] += 1;
-        const role = playerFeatures.get(chosen.playerId)?.role ?? pitcherRole(chosen);
-        if (role === "sp") {
-          teamSP[team] += 1;
-        } else if (role === "rp") {
-          teamRP[team] += 1;
-        } else {
-          const spDef = spTarget - teamSP[team];
-          const rpDef = rpTarget - teamRP[team];
-          if (spDef > rpDef) teamSP[team] += 1;
-          else if (rpDef > spDef) teamRP[team] += 1;
-          else if (profile.starterBias >= profile.savesBias) teamSP[team] += 1;
-          else teamRP[team] += 1;
-        }
-      }
+      assignPlayerToTeam(
+        chosen,
+        team,
+        profile,
+        teams,
+        teamH,
+        teamP,
+        teamSP,
+        teamRP,
+        playerFeatures,
+        spTarget,
+        rpTarget
+      );
     }
 
     for (let t = 0; t < settings.numTeams; t++) {

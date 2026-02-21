@@ -73,6 +73,22 @@ function clamp01(v: unknown, fallback: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
+function getLockedPlayersForSimulation(
+  playersById: Map<string, Player>,
+  state: DraftState
+): Player[] {
+  const ids = new Set<string>();
+  for (const pick of state.myPicks) ids.add(pick.playerId);
+  for (const id of state.otherPicks) ids.add(id);
+
+  const locked: Player[] = [];
+  for (const id of ids) {
+    const player = playersById.get(id);
+    if (player) locked.push(player);
+  }
+  return locked;
+}
+
 function migrateLeagueSettings(stored: unknown): LeagueSettings | null {
   if (!isRecord(stored)) return null;
   const s = stored as Record<string, unknown>;
@@ -225,8 +241,33 @@ export function useDraftState() {
 
   const playersById = useMemo(() => buildPlayersById(allPlayers), [allPlayers]);
 
-  // ── Simulation (runs once when settings or pool changes) ────────
+  // ── Simulation (recalibrates every 2 rounds and when settings/pool change) ───
   const [leagueDists, setLeagueDists] = useState<LeagueCategoryDistributions | null>(null);
+  const totalDraftedCount = draftState.myPicks.length + draftState.otherPicks.length;
+  const picksPerCalibrationWindow = Math.max(1, settings.numTeams * 2);
+  const recalibrationBucket = Math.floor(totalDraftedCount / picksPerCalibrationWindow);
+  const lockedPlayersSnapshotRef = useRef<{
+    bucket: number;
+    playersByIdRef: Map<string, Player> | null;
+    players: Player[];
+  }>({
+    bucket: -1,
+    playersByIdRef: null,
+    players: [],
+  });
+
+  if (
+    lockedPlayersSnapshotRef.current.bucket !== recalibrationBucket ||
+    lockedPlayersSnapshotRef.current.playersByIdRef !== playersById
+  ) {
+    lockedPlayersSnapshotRef.current = {
+      bucket: recalibrationBucket,
+      playersByIdRef: playersById,
+      players: getLockedPlayersForSimulation(playersById, draftState),
+    };
+  }
+
+  const lockedPlayersForSimulation = lockedPlayersSnapshotRef.current.players;
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -235,11 +276,12 @@ export function useDraftState() {
       const dists = simulateLeagueDistributions(allPlayers, settings, {
         iterations: 80,
         seed: 42,
+        lockedPlayers: lockedPlayersForSimulation,
       });
       setLeagueDists(dists);
     }, 50);
     return () => clearTimeout(t);
-  }, [allPlayers, settings, isLoaded]);
+  }, [allPlayers, settings, isLoaded, recalibrationBucket, lockedPlayersForSimulation]);
 
   // ── Derived state ───────────────────────────────────────────────
 
@@ -355,6 +397,7 @@ export function useDraftState() {
       let lastMatchedName: string | null = null;
       let unmatchedInMessage = 0;
       let lastUnmatchedName: string | null = null;
+      const processedEventIds = new Set<string>();
       const seen = seenExtensionEventsRef.current;
 
       for (const rawPick of payload.picks as ExtensionPickPayload[]) {
@@ -370,8 +413,12 @@ export function useDraftState() {
           ? rawPick.eventId
           : `${normalized}:${Math.floor(detectedAt / 5000)}`;
 
-        if (seen.has(eventId)) continue;
+        if (seen.has(eventId)) {
+          processedEventIds.add(eventId);
+          continue;
+        }
         seen.add(eventId);
+        processedEventIds.add(eventId);
         if (seen.size > 1600) {
           seen.clear();
           seen.add(eventId);
@@ -397,6 +444,17 @@ export function useDraftState() {
           }
           return next;
         });
+      }
+
+      if (processedEventIds.size > 0) {
+        window.postMessage(
+          {
+            source: "cdc-app",
+            type: "CDC_ACK_PICKS",
+            eventIds: Array.from(processedEventIds),
+          },
+          window.location.origin
+        );
       }
 
       setExtensionSync((prev) => ({
