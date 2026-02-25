@@ -229,18 +229,25 @@ export function DraftBoard() {
                     onClick={() => setShowInstallHelp(false)}
                   />
                   <div className="absolute top-full left-0 mt-2 z-50 bg-white border border-zinc-200 rounded-xl shadow-xl p-4 w-80 text-xs text-zinc-700">
-                    <p className="font-semibold text-sm text-zinc-800 mb-2">
+                    <p className="font-semibold text-sm text-zinc-800 mb-1">
                       Install the CBS Sync Extension
                     </p>
                     <p className="text-zinc-500 mb-3">
                       This Chrome extension auto-removes drafted players from your board by watching the CBS live draft room.
                     </p>
+                    <a
+                      href="/cbs-sync-extension.zip"
+                      download
+                      className="flex items-center justify-center gap-2 w-full mb-4 px-3 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                    >
+                      ⬇ Download Extension
+                    </a>
                     <ol className="space-y-2 list-none">
                       {[
+                        <>Download and unzip the file above</>,
                         <>Open <code className="bg-zinc-100 px-1 rounded font-mono">chrome://extensions</code> in Chrome</>,
                         <>Toggle on <strong>Developer mode</strong> (top-right corner)</>,
-                        <>Click <strong>Load unpacked</strong></>,
-                        <>Select the <code className="bg-zinc-100 px-1 rounded font-mono">browser-extension/cbs-sync</code> folder from this project</>,
+                        <>Click <strong>Load unpacked</strong> and select the unzipped folder</>,
                         <>Open your CBS draft room in another tab — sync will start automatically</>,
                       ].map((step, i) => (
                         <li key={i} className="flex gap-2">
