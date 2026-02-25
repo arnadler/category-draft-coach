@@ -45,6 +45,7 @@ export function DraftBoard() {
   const [mobileTab, setMobileTab] = useState<MobileTab>("picks");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -213,9 +214,52 @@ export function DraftBoard() {
         />
 
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs md:text-sm">
-          <div className={`rounded-full border px-3 py-1 font-semibold ${syncPillClass}`}>
-            {syncLabel}
-          </div>
+          {!extensionSync.extensionDetected ? (
+            <div className="relative">
+              <button
+                onClick={() => setShowInstallHelp((v) => !v)}
+                className={`rounded-full border px-3 py-1 font-semibold ${syncPillClass} cursor-pointer hover:bg-zinc-200 transition-colors`}
+              >
+                Install CBS Sync extension ▾
+              </button>
+              {showInstallHelp && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowInstallHelp(false)}
+                  />
+                  <div className="absolute top-full left-0 mt-2 z-50 bg-white border border-zinc-200 rounded-xl shadow-xl p-4 w-80 text-xs text-zinc-700">
+                    <p className="font-semibold text-sm text-zinc-800 mb-2">
+                      Install the CBS Sync Extension
+                    </p>
+                    <p className="text-zinc-500 mb-3">
+                      This Chrome extension auto-removes drafted players from your board by watching the CBS live draft room.
+                    </p>
+                    <ol className="space-y-2 list-none">
+                      {[
+                        <>Open <code className="bg-zinc-100 px-1 rounded font-mono">chrome://extensions</code> in Chrome</>,
+                        <>Toggle on <strong>Developer mode</strong> (top-right corner)</>,
+                        <>Click <strong>Load unpacked</strong></>,
+                        <>Select the <code className="bg-zinc-100 px-1 rounded font-mono">browser-extension/cbs-sync</code> folder from this project</>,
+                        <>Open your CBS draft room in another tab — sync will start automatically</>,
+                      ].map((step, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="flex-shrink-0 w-5 h-5 rounded-full bg-zinc-100 text-zinc-600 font-bold flex items-center justify-center">
+                            {i + 1}
+                          </span>
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className={`rounded-full border px-3 py-1 font-semibold ${syncPillClass}`}>
+              {syncLabel}
+            </div>
+          )}
           {extensionSync.syncedOtherPickCount > 0 ? (
             <div className="text-zinc-600">
               Auto-removed <span className="font-semibold text-zinc-800">{extensionSync.syncedOtherPickCount}</span>{" "}
