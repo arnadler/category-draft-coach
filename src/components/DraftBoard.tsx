@@ -211,6 +211,7 @@ export function DraftBoard() {
         <QuickAdd
           availablePlayers={availablePlayers}
           onDraftMe={handleDraftMe}
+          onDraftOther={handleDraftOther}
         />
 
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs md:text-sm">

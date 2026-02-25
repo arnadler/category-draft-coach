@@ -115,7 +115,7 @@ export function PlayerPool({ players, onDraftMe, onDraftOther }: PlayerPoolProps
                 onDraftMe(confirmPlayer.playerId);
                 setConfirmPlayer(null);
               }}
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg
+              className="flex-1 py-3 bg-blue-600 text-white text-sm rounded-lg
                          hover:bg-blue-700 font-semibold"
             >
               My Pick
@@ -125,14 +125,14 @@ export function PlayerPool({ players, onDraftMe, onDraftOther }: PlayerPoolProps
                 onDraftOther(confirmPlayer.playerId);
                 setConfirmPlayer(null);
               }}
-              className="px-4 py-2 bg-orange-500 text-white text-sm rounded-lg
+              className="flex-1 py-3 bg-orange-500 text-white text-sm rounded-lg
                          hover:bg-orange-600 font-semibold"
             >
               Other Team
             </button>
             <button
               onClick={() => setConfirmPlayer(null)}
-              className="px-4 py-2 bg-zinc-200 text-zinc-700 text-sm rounded-lg
+              className="px-4 py-3 bg-zinc-200 text-zinc-700 text-sm rounded-lg
                          hover:bg-zinc-300 font-semibold"
             >
               Cancel
@@ -159,23 +159,23 @@ export function PlayerPool({ players, onDraftMe, onDraftOther }: PlayerPoolProps
                 className="border-b border-zinc-100 hover:bg-blue-50 transition-colors cursor-pointer"
                 onClick={() => setConfirmPlayer(player)}
               >
-                <td className="px-3 py-2">
+                <td className="px-3 py-3">
                   <div className="font-semibold text-zinc-800">{player.name}</div>
                   <div className="text-xs text-zinc-400">{player.team}</div>
                 </td>
-                <td className="text-center px-2 py-2 text-xs text-zinc-600">
+                <td className="text-center px-2 py-3 text-xs text-zinc-600">
                   {player.positions.join("/")}
                 </td>
-                <td className="text-center px-2 py-2 text-xs text-zinc-500">
+                <td className="text-center px-2 py-3 text-xs text-zinc-500">
                   {player.ADP ?? "-"}
                 </td>
-                <td className="px-2 py-2">
+                <td className="px-2 py-3">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setConfirmPlayer(player);
                     }}
-                    className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg
+                    className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg
                                hover:bg-blue-600 font-semibold"
                   >
                     Draft

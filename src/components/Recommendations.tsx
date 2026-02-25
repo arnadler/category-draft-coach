@@ -131,7 +131,7 @@ export function Recommendations({
                   </div>
                   <button
                     onClick={() => onDraftMe(rec.player.playerId)}
-                    className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg
+                    className="px-3 py-2 bg-green-600 text-white text-sm rounded-lg
                                hover:bg-green-700 font-semibold"
                   >
                     Draft

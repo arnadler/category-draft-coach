@@ -10,9 +10,11 @@ type SearchPlayer = Player & { _searchName: string };
 export function QuickAdd({
   availablePlayers,
   onDraftMe,
+  onDraftOther,
 }: {
   availablePlayers: Player[];
   onDraftMe: (playerId: string) => void;
+  onDraftOther: (playerId: string) => void;
 }) {
   const [raw, setRaw] = useState("");
   const [suggestions, setSuggestions] = useState<SearchPlayer[]>([]);
@@ -53,34 +55,30 @@ export function QuickAdd({
       return;
     }
 
-    // Auto-pick if it's a clear winner (Fuse score: lower is better)
-    const best = results[0];
-    const second = results[1];
-    const bestScore = best?.score ?? 1;
-    const secondScore = second?.score ?? 1;
-    if (best && bestScore < 0.12 && secondScore - bestScore > 0.06) {
-      onDraftMe(best.item.playerId);
-      setRaw("");
-      setSuggestions([]);
-      setMessage(`Added: ${best.item.name}`);
-      return;
-    }
-
     setSuggestions(items);
-    setMessage("Select the right match:");
+    setMessage(items.length === 1 ? "" : "Select the right match:");
   };
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-3">
-      <div className="text-sm font-semibold text-zinc-900">Quick Add (paste from CBS)</div>
+      <div className="text-sm font-semibold text-zinc-900">Quick Draft</div>
       <div className="mt-2 flex gap-2">
         <input
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") runMatch();
+            if (e.key === "Enter") {
+              if (suggestions.length === 1) {
+                onDraftMe(suggestions[0].playerId);
+                setRaw("");
+                setSuggestions([]);
+                setMessage(`Added: ${suggestions[0].name}`);
+              } else {
+                runMatch();
+              }
+            }
           }}
-          placeholder='e.g. "Ronald Acuna Jr., OF, ATL"'
+          placeholder="Type player name..."
           className="h-11 w-full rounded-lg border border-zinc-300 bg-white px-3 text-base"
         />
         <button
@@ -88,7 +86,7 @@ export function QuickAdd({
           onClick={runMatch}
           className="h-11 shrink-0 rounded-lg bg-zinc-900 px-4 text-sm font-semibold text-white hover:bg-zinc-800"
         >
-          Add
+          Search
         </button>
       </div>
 
@@ -107,18 +105,32 @@ export function QuickAdd({
                   {p.team} • {p.positions.join("/")} • {p.hitterOrPitcher === "hitter" ? "Hitter" : "Pitcher"}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  onDraftMe(p.playerId);
-                  setRaw("");
-                  setSuggestions([]);
-                  setMessage(`Added: ${p.name}`);
-                }}
-                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
-              >
-                Draft
-              </button>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDraftMe(p.playerId);
+                    setRaw("");
+                    setSuggestions([]);
+                    setMessage(`Added: ${p.name}`);
+                  }}
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  My Pick
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDraftOther(p.playerId);
+                    setRaw("");
+                    setSuggestions([]);
+                    setMessage(`Removed: ${p.name}`);
+                  }}
+                  className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+                >
+                  Other Team
+                </button>
+              </div>
             </div>
           ))}
         </div>
